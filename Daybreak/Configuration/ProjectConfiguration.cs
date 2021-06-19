@@ -21,6 +21,7 @@ using System.Net.Http;
 using System.Windows.Extensions.Http;
 using LiteDB;
 using System.Windows.Extensions;
+using Daybreak.Services.Options;
 
 namespace Daybreak.Configuration
 {
@@ -30,6 +31,7 @@ namespace Daybreak.Configuration
         {
             serviceManager.ThrowIfNull(nameof(serviceManager));
 
+            serviceManager.RegisterOptionsManager<JsonOptionsManager>();
             serviceManager.RegisterResolver(
                 new HttpClientResolver()
                 .WithHttpMessageHandlerFactory((serviceProvider, categoryType) =>

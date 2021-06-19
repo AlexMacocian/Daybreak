@@ -1,12 +1,15 @@
-﻿using Daybreak.Exceptions;
+﻿using Daybreak.Configuration.Models;
+using Daybreak.Exceptions;
 using Daybreak.Models;
 using Daybreak.Models.Github;
+using Daybreak.PostUpdateJobs;
 using Daybreak.Services.Configuration;
 using Daybreak.Services.ViewManagement;
 using Daybreak.Utils;
 using Daybreak.Views;
 using Microsoft.Extensions.Logging;
 using Microsoft.Win32;
+using Slim;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -19,6 +22,7 @@ using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Extensions;
 using Version = Daybreak.Models.Versioning.Version;
 
 namespace Daybreak.Services.Updater
@@ -58,21 +62,24 @@ namespace Daybreak.Services.Updater
         private readonly CancellationTokenSource updateCancellationTokenSource = new();
         private readonly ILogger<ApplicationUpdater> logger;
         private readonly IViewManager viewManager;
-        private readonly IConfigurationManager configurationManager;
         private readonly IHttpClient<ApplicationUpdater> httpClient;
+        private readonly ILiveOptions<ApplicationUpdaterOptions> options;
+        private readonly IServiceManager serviceManager;
 
         public Version CurrentVersion { get; }
 
         public ApplicationUpdater(
             ILogger<ApplicationUpdater> logger,
-            IConfigurationManager configurationManager,
             IViewManager viewManager,
-            IHttpClient<ApplicationUpdater> httpClient)
+            IHttpClient<ApplicationUpdater> httpClient,
+            ILiveOptions<ApplicationUpdaterOptions> options,
+            IServiceManager serviceManager)
         {
+            this.serviceManager = serviceManager.ThrowIfNull(nameof(serviceManager));
             this.viewManager = viewManager.ThrowIfNull(nameof(viewManager));
-            this.configurationManager = configurationManager.ThrowIfNull(nameof(configurationManager));
             this.logger = logger.ThrowIfNull(nameof(logger));
             this.httpClient = httpClient.ThrowIfNull(nameof(httpClient));
+            this.options = options.ThrowIfNull(nameof(options));
             this.httpClient.DefaultRequestHeaders.Add("user-agent", "Daybreak Client");
             if (Version.TryParse(Assembly.GetExecutingAssembly().GetName().Version.ToString(), out var currentVersion))
             {
@@ -175,7 +182,7 @@ namespace Daybreak.Services.Updater
         {
             System.Extensions.TaskExtensions.RunPeriodicAsync(async () =>
             {
-                if (this.configurationManager.GetConfiguration().AutoCheckUpdate is false)
+                if (this.options.Value.AutoUpdate is false)
                 {
                     this.updateCancellationTokenSource.Cancel();
                     return;
@@ -225,6 +232,17 @@ namespace Daybreak.Services.Updater
                     {
                         throw new InvalidOperationException("Found update marked in registry but no execution policy");
                     });
+
+                this.logger.LogInformation("Starting post update jobs");
+                foreach(var type in AppDomain.CurrentDomain.GetAssemblies()
+                    .SelectMany(a => a.GetTypes())
+                    .Where(t => t.IsAssignableTo(typeof(PostUpdateJobBase))))   
+                {
+                    var job = Activator.CreateInstance(type, this.serviceManager, this.logger).As<PostUpdateJobBase>();
+                    this.logger.LogInformation($"Starting post update job {job.Name}");
+                    job.Execute();
+                    this.logger.LogInformation($"Ending post update job");
+                }
             }
         }
 
