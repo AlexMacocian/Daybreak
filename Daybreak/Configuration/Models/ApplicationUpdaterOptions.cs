@@ -1,7 +1,11 @@
-﻿namespace Daybreak.Configuration.Models
+﻿using Daybreak.Attributes;
+
+namespace Daybreak.Configuration.Models
 {
-    public class ApplicationUpdaterOptions
+    [NamedOptions("Updater Options")]
+    public class ApplicationUpdaterOptions : IOptionsSection
     {
+        [NamedOption("Auto-update")]
         public bool AutoUpdate { get; set; }
     }
 }
